@@ -9,8 +9,9 @@ use std::convert::TryFrom;
 use std::mem;
 use std::ops::Range;
 
+use crate::grid::Dimensions;
 use crate::index::{Column, Line, Point, Side};
-use crate::term::{Search, Term};
+use crate::term::Term;
 
 /// A Point and side within that point.
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -98,20 +99,19 @@ impl Selection {
         self.region.end = Anchor::new(point, side);
     }
 
-    pub fn rotate(
+    pub fn rotate<D: Dimensions>(
         mut self,
-        num_lines: Line,
-        num_cols: Column,
+        dimensions: &D,
         range: &Range<Line>,
         delta: isize,
     ) -> Option<Selection> {
+        let num_lines = dimensions.num_lines().0;
+        let num_cols = dimensions.num_cols().0;
         let range_bottom = range.start.0;
         let range_top = range.end.0;
-        let num_lines = num_lines.0;
-        let num_cols = num_cols.0;
 
         let (mut start, mut end) = (&mut self.region.start, &mut self.region.end);
-        if Self::points_need_swap(start.point, end.point) {
+        if Selection::points_need_swap(start.point, end.point) {
             mem::swap(&mut start, &mut end);
         }
 
@@ -224,7 +224,7 @@ impl Selection {
 
         // Clamp to inside the grid buffer.
         let is_block = self.ty == SelectionType::Block;
-        let (start, end) = Self::grid_clamp(start, end, is_block, grid.len()).ok()?;
+        let (start, end) = Self::grid_clamp(start, end, is_block, grid.total_lines()).ok()?;
 
         match self.ty {
             SelectionType::Simple => self.range_simple(start, end, num_cols),

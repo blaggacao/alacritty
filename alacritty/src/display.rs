@@ -15,6 +15,7 @@ use glutin::platform::unix::EventLoopWindowTargetExtUnix;
 use glutin::window::CursorIcon;
 use log::{debug, info};
 use parking_lot::MutexGuard;
+use unicode_width::UnicodeWidthChar;
 #[cfg(not(any(target_os = "macos", windows)))]
 use wayland_client::{Display as WaylandDisplay, EventQueue};
 
@@ -328,6 +329,7 @@ impl Display {
         terminal: &mut Term<T>,
         pty_resize_handle: &mut dyn OnResize,
         message_buffer: &MessageBuffer,
+        search_active: bool,
         config: &Config,
         update_pending: DisplayUpdate,
     ) {
@@ -369,6 +371,11 @@ impl Display {
             pty_size.height -= pty_size.cell_height * lines as f32;
         }
 
+        // Add an extra line for the current search regex.
+        if search_active {
+            pty_size.height -= pty_size.cell_height;
+        }
+
         // Resize PTY.
         pty_resize_handle.on_resize(&pty_size);
 
@@ -393,6 +400,7 @@ impl Display {
         config: &Config,
         mouse: &Mouse,
         mods: ModifiersState,
+        search_regex: Option<String>,
     ) {
         let grid_cells: Vec<RenderableCell> = terminal.renderable_cells(config).collect();
         let visual_bell_intensity = terminal.visual_bell.intensity();
@@ -402,14 +410,11 @@ impl Display {
         let size_info = self.size_info;
 
         let selection = !terminal.selection.as_ref().map(Selection::is_empty).unwrap_or(true);
-        let mouse_mode = terminal.mode().intersects(TermMode::MOUSE_MODE)
-            && !terminal.mode().contains(TermMode::VI);
+        let mouse_mode =
+            terminal.mode.intersects(TermMode::MOUSE_MODE) && !terminal.mode.contains(TermMode::VI);
 
-        let vi_mode_cursor = if terminal.mode().contains(TermMode::VI) {
-            Some(terminal.vi_mode_cursor)
-        } else {
-            None
-        };
+        let vi_mode_cursor =
+            if terminal.mode.contains(TermMode::VI) { Some(terminal.vi_mode_cursor) } else { None };
 
         // Update IME position.
         #[cfg(not(windows))]
@@ -484,11 +489,13 @@ impl Display {
             rects.push(visual_bell_rect);
         }
 
+        let mut message_bar_lines = 0;
         if let Some(message) = message_buffer.message() {
             let text = message.text(&size_info);
+            message_bar_lines = text.len();
 
             // Create a new rectangle for the background.
-            let start_line = size_info.lines().0 - text.len();
+            let start_line = size_info.lines().0 - message_bar_lines;
             let y = size_info.cell_height.mul_add(start_line as f32, size_info.padding_y);
             let message_bar_rect =
                 RenderRect::new(0., y, size_info.width, size_info.height - y, message.color(), 1.);
@@ -515,6 +522,25 @@ impl Display {
         } else {
             // Draw rectangles.
             self.renderer.draw_rects(&size_info, rects);
+        }
+
+        // Draw current search regex.
+        if let Some(search_regex) = search_regex {
+            // Add spacers for wide chars.
+            let mut text = String::with_capacity(search_regex.len());
+            for c in search_regex.chars() {
+                text.push(c);
+                if c.width() == Some(2) {
+                    text.push(' ');
+                }
+            }
+            let text = format!("Search: {:<1$}", text + "_", size_info.cols().0 - 1);
+
+            let line = size_info.lines() - message_bar_lines - 1;
+            let color = config.colors.primary.foreground;
+            self.renderer.with_api(&config, &size_info, |mut api| {
+                api.render_string(&text, line, glyph_cache, Some(color));
+            });
         }
 
         // Draw render timer.

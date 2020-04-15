@@ -31,8 +31,8 @@ use alacritty_terminal::config::Font;
 use alacritty_terminal::config::LOG_TARGET_CONFIG;
 use alacritty_terminal::event::OnResize;
 use alacritty_terminal::event::{Event, EventListener, Notify};
-use alacritty_terminal::grid::Scroll;
-use alacritty_terminal::index::{Column, Line, Point, Side};
+use alacritty_terminal::grid::{Dimensions, Scroll};
+use alacritty_terminal::index::{Column, Direction, Line, Point, Side};
 use alacritty_terminal::message_bar::{Message, MessageBuffer};
 use alacritty_terminal::selection::{Selection, SelectionType};
 use alacritty_terminal::sync::FairMutex;
@@ -54,14 +54,14 @@ use crate::window::Window;
 #[derive(Default, Clone, Debug, PartialEq)]
 pub struct DisplayUpdate {
     pub dimensions: Option<PhysicalSize<u32>>,
-    pub message_buffer: bool,
     pub font: Option<Font>,
     pub cursor: bool,
+    pub dirty: bool,
 }
 
 impl DisplayUpdate {
     fn is_empty(&self) -> bool {
-        self.dimensions.is_none() && self.font.is_none() && !self.message_buffer && !self.cursor
+        self.dimensions.is_none() && self.font.is_none() && !self.cursor && !self.dirty
     }
 }
 
@@ -80,6 +80,7 @@ pub struct ActionContext<'a, N, T> {
     pub config: &'a mut Config,
     pub event_loop: &'a EventLoopWindowTarget<Event>,
     pub urls: &'a Urls,
+    pub search_regex: &'a mut Option<String>,
     font_size: &'a mut Size,
 }
 
@@ -96,7 +97,7 @@ impl<'a, N: Notify + 'a, T: EventListener> input::ActionContext<T> for ActionCon
         self.terminal.scroll_display(scroll);
 
         // Update selection.
-        if self.terminal.mode().contains(TermMode::VI)
+        if self.terminal.mode.contains(TermMode::VI)
             && self.terminal.selection.as_ref().map(|s| s.is_empty()) != Some(true)
         {
             self.update_selection(self.terminal.vi_mode_cursor.point, Side::Right);
@@ -130,7 +131,7 @@ impl<'a, N: Notify + 'a, T: EventListener> input::ActionContext<T> for ActionCon
         let point = self.terminal.visible_to_buffer(point);
 
         // Update selection if one exists.
-        let vi_mode = self.terminal.mode().contains(TermMode::VI);
+        let vi_mode = self.terminal.mode.contains(TermMode::VI);
         if let Some(selection) = &mut self.terminal.selection {
             selection.update(point, side);
 
@@ -174,8 +175,8 @@ impl<'a, N: Notify + 'a, T: EventListener> input::ActionContext<T> for ActionCon
 
     #[inline]
     fn mouse_mode(&self) -> bool {
-        self.terminal.mode().intersects(TermMode::MOUSE_MODE)
-            && !self.terminal.mode().contains(TermMode::VI)
+        self.terminal.mode.intersects(TermMode::MOUSE_MODE)
+            && !self.terminal.mode.contains(TermMode::VI)
     }
 
     #[inline]
@@ -262,8 +263,68 @@ impl<'a, N: Notify + 'a, T: EventListener> input::ActionContext<T> for ActionCon
     }
 
     fn pop_message(&mut self) {
-        self.display_update_pending.message_buffer = true;
+        self.display_update_pending.dirty = true;
         self.message_buffer.pop();
+    }
+
+    #[inline]
+    fn start_search(&mut self, direction: Direction) {
+        *self.search_regex = Some(String::new());
+        self.terminal.start_search("", direction);
+
+        self.display_update_pending.dirty = true;
+        self.terminal.dirty = true;
+    }
+
+    #[inline]
+    fn confirm_search(&mut self) {
+        self.display_update_pending.dirty = true;
+        *self.search_regex = None;
+        self.terminal.dirty = true;
+
+        // Enter vimode once search is confirmed
+        self.terminal.mode.insert(TermMode::VI);
+    }
+
+    #[inline]
+    fn cancel_search(&mut self) {
+        self.terminal.cancel_search();
+
+        *self.search_regex = None;
+
+        self.display_update_pending.dirty = true;
+        self.terminal.dirty = true;
+    }
+
+    #[inline]
+    fn push_search(&mut self, c: char) {
+        if let Some(search_regex) = self.search_regex {
+            search_regex.push(c);
+
+            // Highlight the current seacrh result
+            let direction = self.terminal.search_direction().unwrap_or(Direction::Right);
+            self.terminal.start_search(search_regex, direction);
+
+            self.terminal.dirty = true;
+        }
+    }
+
+    #[inline]
+    fn pop_search(&mut self) {
+        if let Some(search_regex) = self.search_regex {
+            search_regex.pop();
+
+            // Highlight the current seacrh result
+            let direction = self.terminal.search_direction().unwrap_or(Direction::Right);
+            self.terminal.start_search(search_regex, direction);
+
+            self.terminal.dirty = true;
+        }
+    }
+
+    #[inline]
+    fn search_active(&self) -> bool {
+        self.search_regex.is_some()
     }
 
     fn message(&self) -> Option<&Message> {
@@ -369,7 +430,8 @@ pub struct Processor<N> {
     message_buffer: MessageBuffer,
     display: Display,
     font_size: Size,
-    event_queue: Vec<GlutinEvent<'static, alacritty_terminal::event::Event>>,
+    event_queue: Vec<GlutinEvent<'static, Event>>,
+    search_regex: Option<String>,
 }
 
 impl<N: Notify + OnResize> Processor<N> {
@@ -399,6 +461,7 @@ impl<N: Notify + OnResize> Processor<N> {
             display,
             event_queue: Vec::new(),
             clipboard,
+            search_regex: None,
         }
     }
 
@@ -495,6 +558,7 @@ impl<N: Notify + OnResize> Processor<N> {
                 font_size: &mut self.font_size,
                 config: &mut self.config,
                 urls: &self.display.urls,
+                search_regex: &mut self.search_regex,
                 event_loop,
             };
             let mut processor = input::Processor::new(context, &self.display.highlighted_url);
@@ -509,6 +573,7 @@ impl<N: Notify + OnResize> Processor<N> {
                     &mut terminal,
                     &mut self.notifier,
                     &self.message_buffer,
+                    self.search_regex.is_some(),
                     &self.config,
                     display_update_pending,
                 );
@@ -539,6 +604,7 @@ impl<N: Notify + OnResize> Processor<N> {
                     &self.config,
                     &self.mouse,
                     self.modifiers,
+                    self.search_regex.clone(),
                 );
             }
         });
@@ -579,7 +645,7 @@ impl<N: Notify + OnResize> Processor<N> {
                 Event::ConfigReload(path) => Self::reload_config(&path, processor),
                 Event::Message(message) => {
                     processor.ctx.message_buffer.push(message);
-                    processor.ctx.display_update_pending.message_buffer = true;
+                    processor.ctx.display_update_pending.dirty = true;
                     processor.ctx.terminal.dirty = true;
                 },
                 Event::ClipboardStore(clipboard_type, content) => {
@@ -713,7 +779,7 @@ impl<N: Notify + OnResize> Processor<N> {
         T: EventListener,
     {
         processor.ctx.message_buffer.remove_target(LOG_TARGET_CONFIG);
-        processor.ctx.display_update_pending.message_buffer = true;
+        processor.ctx.display_update_pending.dirty = true;
 
         let config = match config::reload_from(&path) {
             Ok(config) => config,

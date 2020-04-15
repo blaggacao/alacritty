@@ -7,16 +7,20 @@ use std::ops::{self, Add, AddAssign, Deref, Range, Sub, SubAssign};
 
 use serde::{Deserialize, Serialize};
 
+use crate::grid::Dimensions;
 use crate::term::RenderableCell;
 
 /// The side of a cell.
+pub type Side = Direction;
+
+/// Horizontal direction.
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub enum Side {
+pub enum Direction {
     Left,
     Right,
 }
 
-impl Side {
+impl Direction {
     pub fn opposite(self) -> Self {
         match self {
             Side::Right => Side::Left,
@@ -65,34 +69,61 @@ impl<L> Point<L> {
         self.col = Column((self.col.0 + rhs) % num_cols);
         self
     }
+}
 
+impl Point<usize> {
     #[inline]
     #[must_use = "this returns the result of the operation, without modifying the original"]
-    pub fn sub_absolute(mut self, num_cols: Column, rhs: usize) -> Point<L>
+    pub fn sub_absolute<D>(mut self, dimensions: &D, what: Whatever, rhs: usize) -> Point<usize>
     where
-        L: Copy + Default + Into<Line> + Add<usize, Output = L> + Sub<usize, Output = L>,
+        D: Dimensions,
     {
-        let num_cols = num_cols.0;
+        let total_lines = dimensions.total_lines();
+        let num_cols = dimensions.num_cols().0;
+
         self.line = self.line + ((rhs + num_cols - 1).saturating_sub(self.col.0) / num_cols);
         self.col = Column((num_cols + self.col.0 - rhs % num_cols) % num_cols);
-        self
+
+        if self.line >= total_lines {
+            match what {
+                Whatever::Clamp => Point::new(total_lines - 1, Column(0)),
+                Whatever::Wrap => Point::new(self.line - total_lines, self.col),
+            }
+        } else {
+            self
+        }
     }
 
     #[inline]
     #[must_use = "this returns the result of the operation, without modifying the original"]
-    pub fn add_absolute(mut self, num_cols: Column, rhs: usize) -> Point<L>
+    pub fn add_absolute<D>(mut self, dimensions: &D, what: Whatever, rhs: usize) -> Point<usize>
     where
-        L: Copy + Default + Into<Line> + Add<usize, Output = L> + Sub<usize, Output = L>,
+        D: Dimensions,
     {
-        let line_changes = (rhs + self.col.0) / num_cols.0;
-        if self.line.into() >= Line(line_changes) {
-            self.line = self.line - line_changes;
+        let num_cols = dimensions.num_cols();
+
+        let line_delta = (rhs + self.col.0) / num_cols.0;
+
+        if self.line >= line_delta {
+            self.line = self.line - line_delta;
             self.col = Column((self.col.0 + rhs) % num_cols.0);
             self
         } else {
-            Point::new(L::default(), num_cols - 1)
+            match what {
+                Whatever::Clamp => Point::new(0, num_cols - 1),
+                Whatever::Wrap => {
+                    let col = Column((self.col.0 + rhs) % num_cols.0);
+                    Point::new(line_delta - self.line, col)
+                },
+            }
         }
     }
+}
+
+// TODO: Doc, Rename
+pub enum Whatever {
+    Clamp,
+    Wrap,
 }
 
 impl Ord for Point {

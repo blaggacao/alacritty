@@ -6,7 +6,7 @@ use crate::index::{Column, Line};
 use crate::term::cell::Flags;
 
 use crate::grid::row::Row;
-use crate::grid::{Grid, GridCell};
+use crate::grid::{Dimensions, Grid, GridCell};
 
 impl<T: GridCell + Default + PartialEq + Copy> Grid<T> {
     /// Resize the grid's width and/or height.

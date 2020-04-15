@@ -119,6 +119,13 @@ impl IndexMut<CharsetIndex> for Charsets {
 /// ```
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Grid<T> {
+    /// Offset of displayed area.
+    ///
+    /// If the displayed region isn't at the bottom of the screen, it stays
+    /// stationary while more text is emitted. The scrolling implementation
+    /// updates this offset accordingly.
+    pub display_offset: usize,
+
     /// Current cursor for writing data.
     #[serde(skip)]
     pub cursor: Cursor,
@@ -136,13 +143,6 @@ pub struct Grid<T> {
 
     /// Number of visible lines.
     lines: Line,
-
-    /// Offset of displayed area.
-    ///
-    /// If the displayed region isn't at the bottom of the screen, it stays
-    /// stationary while more text is emitted. The scrolling implementation
-    /// updates this offset accordingly.
-    display_offset: usize,
 
     /// Maximum number of lines in history.
     max_scroll_limit: usize,
@@ -168,23 +168,6 @@ impl<T: GridCell + Default + PartialEq + Copy> Grid<T> {
             lines,
             cols,
         }
-    }
-
-    /// Clamp a buffer point to the visible region.
-    pub fn clamp_buffer_to_visible(&self, point: Point<usize>) -> Point {
-        if point.line < self.display_offset {
-            Point::new(self.lines - 1, self.cols - 1)
-        } else if point.line >= self.display_offset + self.lines.0 {
-            Point::new(Line(0), Column(0))
-        } else {
-            // Since edge-cases are handled, conversion is identical as visible to buffer.
-            self.visible_to_buffer(point.into()).into()
-        }
-    }
-
-    /// Convert viewport relative point to global buffer indexing.
-    pub fn visible_to_buffer(&self, point: Point) -> Point<usize> {
-        Point { line: self.lines.0 + self.display_offset - point.line.0 - 1, col: point.col }
     }
 
     /// Update the size of the scrollback history.
@@ -356,9 +339,22 @@ impl<T: GridCell + Default + PartialEq + Copy> Grid<T> {
 
 #[allow(clippy::len_without_is_empty)]
 impl<T> Grid<T> {
+    /// Clamp a buffer point to the visible region.
+    pub fn clamp_buffer_to_visible(&self, point: Point<usize>) -> Point {
+        if point.line < self.display_offset {
+            Point::new(self.lines - 1, self.cols - 1)
+        } else if point.line >= self.display_offset + self.lines.0 {
+            Point::new(Line(0), Column(0))
+        } else {
+            // Since edgecases are handled, conversion is identical as visible to buffer.
+            self.visible_to_buffer(point.into()).into()
+        }
+    }
+
+    /// Convert viewport relative point to global buffer indexing.
     #[inline]
-    pub fn num_lines(&self) -> Line {
-        self.lines
+    pub fn visible_to_buffer(&self, point: Point) -> Point<usize> {
+        Point { line: self.lines.0 + self.display_offset - point.line.0 - 1, col: point.col }
     }
 
     #[inline]
@@ -367,25 +363,9 @@ impl<T> Grid<T> {
     }
 
     #[inline]
-    pub fn num_cols(&self) -> Column {
-        self.cols
-    }
-
-    #[inline]
     pub fn clear_history(&mut self) {
         // Explicitly purge all lines from history.
         self.raw.shrink_lines(self.history_size());
-    }
-
-    /// Total number of lines in the buffer, this includes scrollback + visible lines.
-    #[inline]
-    pub fn len(&self) -> usize {
-        self.raw.len()
-    }
-
-    #[inline]
-    pub fn history_size(&self) -> usize {
-        self.raw.len() - *self.lines
     }
 
     /// This is used only for initializing after loading ref-tests.
@@ -413,14 +393,44 @@ impl<T> Grid<T> {
     }
 
     #[inline]
-    pub fn display_offset(&self) -> usize {
-        self.display_offset
-    }
-
-    #[inline]
     pub fn cursor_cell(&mut self) -> &mut T {
         let point = self.cursor.point;
         &mut self[&point]
+    }
+}
+
+/// Grid dimensions.
+pub trait Dimensions {
+    /// Width of the viewport in columns.
+    fn num_cols(&self) -> Column;
+
+    /// Height of the viewport in lines.
+    fn num_lines(&self) -> Line;
+
+    /// Total number of lines in the buffer, this includes scrollback and visible lines.
+    fn total_lines(&self) -> usize;
+
+    /// Number of invisible lines part of the scrollback history.
+    #[inline]
+    fn history_size(&self) -> usize {
+        self.total_lines() - self.num_lines().0
+    }
+}
+
+impl<G> Dimensions for Grid<G> {
+    #[inline]
+    fn num_cols(&self) -> Column {
+        self.cols
+    }
+
+    #[inline]
+    fn num_lines(&self) -> Line {
+        self.lines
+    }
+
+    #[inline]
+    fn total_lines(&self) -> usize {
+        self.raw.len()
     }
 }
 
@@ -467,7 +477,7 @@ impl<'a, T> BidirectionalIterator for GridIterator<'a, T> {
         let num_cols = self.grid.num_cols();
 
         match self.cur {
-            Point { line, col: Column(0) } if line == self.grid.len() - 1 => None,
+            Point { line, col: Column(0) } if line == self.grid.total_lines() - 1 => None,
             Point { col: Column(0), .. } => {
                 self.cur.line += 1;
                 self.cur.col = num_cols - Column(1);
