@@ -498,9 +498,10 @@ mod tests {
         // Check regex across wrapped and unwrapped lines
         term.regex_search = Some(RegexSearch::new("Ala.*123", Direction::Right).unwrap());
         let origin = Point::new(3, Column(0));
+        let last = Point::new(term.total_lines(), term.num_cols());
         let start = Point::new(3, Column(0));
         let end = Point::new(2, Column(2));
-        assert_eq!(term.regex_search_right(origin), Some(start..=end));
+        assert_eq!(term.regex_search_right(origin, last), Some(start..=end));
     }
 
     #[test]
@@ -517,9 +518,10 @@ mod tests {
         // Check regex across wrapped and unwrapped lines
         term.regex_search = Some(RegexSearch::new("Ala.*123", Direction::Right).unwrap());
         let origin = Point::new(0, Column(2));
+        let last = Point::new(term.total_lines(), term.num_cols() - Column(1));
         let start = Point::new(3, Column(0));
         let end = Point::new(2, Column(2));
-        assert_eq!(term.regex_search_left(origin), Some(start..=end));
+        assert_eq!(term.regex_search_left(origin, last), Some(start..=end));
     }
 
     #[test]
@@ -534,29 +536,30 @@ mod tests {
         term.regex_search = Some(RegexSearch::new("Ala.*critty", Direction::Right).unwrap());
         let start = Point::new(1, Column(0));
         let end = Point::new(1, Column(25));
-        assert_eq!(term.regex_search_right(start), Some(start..=end));
+        let last = Point::new(term.total_lines(), term.num_cols());
+        assert_eq!(term.regex_search_right(start, last), Some(start..=end));
 
         // Greedy stopped at dead state
         term.regex_search = Some(RegexSearch::new("Ala[^y]*critty", Direction::Right).unwrap());
         let start = Point::new(1, Column(0));
         let end = Point::new(1, Column(15));
-        assert_eq!(term.regex_search_right(start), Some(start..=end));
+        let last = Point::new(term.total_lines(), term.num_cols());
+        assert_eq!(term.regex_search_right(start, last), Some(start..=end));
     }
 
     #[test]
     fn start_after_origin() {
         #[rustfmt::skip]
-        let mut term = mock_term("\
-            testing testing testing\r\n\
-            testing\
-        ");
+        let mut term = mock_term("testing testing testing\r\ntesting");
 
         // Start in middle of match should skip to the next one
         term.regex_search = Some(RegexSearch::new("te.*ng", Direction::Right).unwrap());
         let origin = Point::new(1, Column(1));
+        //let last = Point::new(term.total_lines(), term.num_cols());
+        let last = Point::new(origin.line, origin.col - Column(1));
         let start = Point::new(0, Column(0));
         let end = Point::new(0, Column(6));
-        assert_eq!(term.regex_search_right(origin), Some(start..=end));
+        assert_eq!(term.regex_search_right(origin, last), Some(start..=end));
     }
 
     #[test]
@@ -570,9 +573,10 @@ mod tests {
         // Start in middle of match should skip to the next one
         term.regex_search = Some(RegexSearch::new("te.*ng", Direction::Right).unwrap());
         let origin = Point::new(0, Column(21));
+        let last = Point::new(term.total_lines(), term.num_cols() - Column(1));
         let start = Point::new(1, Column(0));
         let end = Point::new(1, Column(6));
-        assert_eq!(term.regex_search_left(origin), Some(start..=end));
+        assert_eq!(term.regex_search_left(origin, last), Some(start..=end));
     }
 
     #[test]
@@ -586,7 +590,8 @@ mod tests {
 
         term.regex_search = Some(RegexSearch::new("nothing", Direction::Right).unwrap());
         let origin = Point::new(0, Column(4));
-        assert_eq!(term.regex_search_right(origin), None);
+        let last = Point::new(term.total_lines() - 1, term.num_cols() - Column(1));
+        assert_eq!(term.regex_search_right(origin, last), None);
     }
 
     #[test]
@@ -600,7 +605,8 @@ mod tests {
 
         term.regex_search = Some(RegexSearch::new("nothing", Direction::Right).unwrap());
         let origin = Point::new(2, Column(0));
-        assert_eq!(term.regex_search_left(origin), None);
+        let last = Point::new(term.total_lines() - 1, term.num_cols() - Column(1));
+        assert_eq!(term.regex_search_left(origin, last), None);
     }
 
     #[test]
@@ -616,7 +622,8 @@ mod tests {
         let origin = Point::new(0, Column(0));
         let start = Point::new(1, Column(0));
         let end = Point::new(1, Column(9));
-        assert_eq!(term.regex_search_left(origin), Some(start..=end));
+        let last = Point::new(term.total_lines(), term.num_cols() - Column(1));
+        assert_eq!(term.regex_search_left(origin, last), Some(start..=end));
     }
 
     #[test]
@@ -630,9 +637,10 @@ mod tests {
         // Make sure the cell containing the linebreak is not skipped
         term.regex_search = Some(RegexSearch::new("te.*123", Direction::Right).unwrap());
         let origin = Point::new(1, Column(2));
+        let last = Point::new(term.total_lines(), term.num_cols());
         let start = Point::new(0, Column(0));
         let end = Point::new(0, Column(9));
-        assert_eq!(term.regex_search_right(origin), Some(start..=end));
+        assert_eq!(term.regex_search_right(origin, last), Some(start..=end));
     }
 
     #[test]
@@ -643,7 +651,8 @@ mod tests {
         term.regex_search = Some(RegexSearch::new("alacrit", Direction::Right).unwrap());
         let start = Point::new(0, Column(0));
         let end = Point::new(0, Column(6));
-        assert_eq!(term.regex_search_right(start), Some(start..=end));
+        let last = Point::new(term.total_lines(), term.num_cols());
+        assert_eq!(term.regex_search_right(start, last), Some(start..=end));
     }
 
     #[test]
@@ -653,9 +662,10 @@ mod tests {
         // Make sure the reverse DFA operates the same as a forwards DFA
         term.regex_search = Some(RegexSearch::new("zoo", Direction::Right).unwrap());
         let origin = Point::new(0, Column(9));
+        let last = Point::new(term.total_lines(), term.num_cols() - Column(1));
         let start = Point::new(0, Column(0));
         let end = Point::new(0, Column(2));
-        assert_eq!(term.regex_search_left(origin), Some(start..=end));
+        assert_eq!(term.regex_search_left(origin, last), Some(start..=end));
     }
 }
 

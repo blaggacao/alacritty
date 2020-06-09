@@ -916,6 +916,7 @@ impl<'a, T: EventListener, A: ActionContext<T>> Processor<'a, T, A> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use std::borrow::Cow;
     use std::time::Duration;
 

@@ -87,7 +87,7 @@ impl Point<usize> {
         if self.line >= total_lines {
             match what {
                 Whatever::Clamp => Point::new(total_lines - 1, Column(0)),
-                Whatever::Wrap => Point::new(self.line - total_lines, self.col),
+                Whatever::Wrap => Point::new(self.line - total_lines + 1, self.col),
             }
         } else {
             self
@@ -167,6 +167,18 @@ impl From<RenderableCell> for Point<Line> {
     }
 }
 
+impl Dimensions for Point {
+    fn num_cols(&self) -> Column {
+        self.col.clone()
+    }
+    fn num_lines(&self) -> Line {
+        self.line.clone()
+    }
+    fn total_lines(&self) -> usize {
+        self.line.0
+    }
+}
+
 /// A line.
 ///
 /// Newtype to avoid passing values incorrectly.
@@ -188,6 +200,18 @@ pub struct Column(pub usize);
 impl fmt::Display for Column {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.0)
+    }
+}
+
+impl Dimensions for Column {
+    fn num_cols(&self) -> Column {
+        self.clone()
+    }
+    fn num_lines(&self) -> Line {
+        Line(1)
+    }
+    fn total_lines(&self) -> usize {
+        1
     }
 }
 
@@ -460,7 +484,7 @@ ops!(Linear, Linear);
 
 #[cfg(test)]
 mod tests {
-    use super::{Column, Line, Point};
+    use super::{Column, Line, Point, Whatever};
 
     #[test]
     fn location_ordering() {
@@ -527,7 +551,7 @@ mod tests {
         let num_cols = Column(42);
         let point = Point::new(0, Column(13));
 
-        let result = point.add_absolute(num_cols, 1);
+        let result = point.add_absolute(&num_cols, Whatever::Wrap, 1);
 
         assert_eq!(result, Point::new(0, point.col + 1));
     }
@@ -537,7 +561,7 @@ mod tests {
         let num_cols = Column(42);
         let point = Point::new(1, num_cols - 1);
 
-        let result = point.add_absolute(num_cols, 1);
+        let result = point.add_absolute(&num_cols, Whatever::Wrap, 1);
 
         assert_eq!(result, Point::new(0, Column(0)));
     }
@@ -547,7 +571,7 @@ mod tests {
         let num_cols = Column(42);
         let point = Point::new(0, num_cols - 1);
 
-        let result = point.add_absolute(num_cols, 1);
+        let result = point.add_absolute(&num_cols, Whatever::Clamp, 1);
 
         assert_eq!(result, point);
     }
@@ -557,7 +581,7 @@ mod tests {
         let num_cols = Column(42);
         let point = Point::new(0, Column(13));
 
-        let result = point.sub_absolute(num_cols, 1);
+        let result = point.sub_absolute(&num_cols, Whatever::Clamp, 1);
 
         assert_eq!(result, Point::new(0, point.col - 1));
     }
@@ -567,7 +591,7 @@ mod tests {
         let num_cols = Column(42);
         let point = Point::new(0, Column(0));
 
-        let result = point.sub_absolute(num_cols, 1);
+        let result = point.sub_absolute(&num_cols, Whatever::Wrap, 1);
 
         assert_eq!(result, Point::new(1, num_cols - 1));
     }

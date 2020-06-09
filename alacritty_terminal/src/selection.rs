@@ -511,7 +511,11 @@ mod tests {
         let mut selection =
             Selection::new(SelectionType::Lines, Point::new(0, Column(1)), Side::Left);
         selection.update(Point::new(5, Column(1)), Side::Right);
-        selection = selection.rotate(num_lines, num_cols, &(Line(0)..num_lines), 7).unwrap();
+        selection = selection.rotate(
+            &Point::new(num_lines, num_cols),
+            &(Line(0)..num_lines),
+            7,
+        ).unwrap();
 
         assert_eq!(selection.to_range(&term(num_cols.0, num_lines.0)).unwrap(), SelectionRange {
             start: Point::new(9, Column(0)),
@@ -527,7 +531,11 @@ mod tests {
         let mut selection =
             Selection::new(SelectionType::Semantic, Point::new(0, Column(3)), Side::Left);
         selection.update(Point::new(5, Column(1)), Side::Right);
-        selection = selection.rotate(num_lines, num_cols, &(Line(0)..num_lines), 7).unwrap();
+        selection = selection.rotate(
+            &Point::new(num_lines, num_cols),
+            &(Line(0)..num_lines),
+            7,
+        ).unwrap();
 
         assert_eq!(selection.to_range(&term(num_cols.0, num_lines.0)).unwrap(), SelectionRange {
             start: Point::new(9, Column(0)),
@@ -543,7 +551,11 @@ mod tests {
         let mut selection =
             Selection::new(SelectionType::Simple, Point::new(0, Column(3)), Side::Right);
         selection.update(Point::new(5, Column(1)), Side::Right);
-        selection = selection.rotate(num_lines, num_cols, &(Line(0)..num_lines), 7).unwrap();
+        selection = selection.rotate(
+            &Point::new(num_lines, num_cols),
+            &(Line(0)..num_lines),
+            7,
+        ).unwrap();
 
         assert_eq!(selection.to_range(&term(num_cols.0, num_lines.0)).unwrap(), SelectionRange {
             start: Point::new(9, Column(0)),
@@ -559,7 +571,11 @@ mod tests {
         let mut selection =
             Selection::new(SelectionType::Block, Point::new(0, Column(3)), Side::Right);
         selection.update(Point::new(5, Column(1)), Side::Right);
-        selection = selection.rotate(num_lines, num_cols, &(Line(0)..num_lines), 7).unwrap();
+        selection = selection.rotate(
+            &Point::new(num_lines, num_cols),
+            &(Line(0)..num_lines),
+            7,
+        ).unwrap();
 
         assert_eq!(selection.to_range(&term(num_cols.0, num_lines.0)).unwrap(), SelectionRange {
             start: Point::new(9, Column(2)),
@@ -603,7 +619,11 @@ mod tests {
         let mut selection =
             Selection::new(SelectionType::Simple, Point::new(2, Column(3)), Side::Right);
         selection.update(Point::new(5, Column(1)), Side::Right);
-        selection = selection.rotate(num_lines, num_cols, &(Line(1)..(num_lines - 1)), 4).unwrap();
+        selection = selection.rotate(
+            &Point::new(num_lines, num_cols),
+            &(Line(1)..(num_lines - 1)),
+            4,
+        ).unwrap();
 
         assert_eq!(selection.to_range(&term(num_cols.0, num_lines.0)).unwrap(), SelectionRange {
             start: Point::new(8, Column(0)),
@@ -619,7 +639,11 @@ mod tests {
         let mut selection =
             Selection::new(SelectionType::Simple, Point::new(5, Column(3)), Side::Right);
         selection.update(Point::new(8, Column(1)), Side::Left);
-        selection = selection.rotate(num_lines, num_cols, &(Line(1)..(num_lines - 1)), -5).unwrap();
+        selection = selection.rotate(
+            &Point::new(num_lines, num_cols),
+            &(Line(1)..(num_lines - 1)),
+            -5,
+        ).unwrap();
 
         assert_eq!(selection.to_range(&term(num_cols.0, num_lines.0)).unwrap(), SelectionRange {
             start: Point::new(3, Column(1)),
@@ -635,7 +659,11 @@ mod tests {
         let mut selection =
             Selection::new(SelectionType::Block, Point::new(2, Column(3)), Side::Right);
         selection.update(Point::new(5, Column(1)), Side::Right);
-        selection = selection.rotate(num_lines, num_cols, &(Line(1)..(num_lines - 1)), 4).unwrap();
+        selection = selection.rotate(
+            &Point::new(num_lines, num_cols),
+            &(Line(1)..(num_lines - 1)),
+            4,
+        ).unwrap();
 
         assert_eq!(selection.to_range(&term(num_cols.0, num_lines.0)).unwrap(), SelectionRange {
             start: Point::new(8, Column(2)),
