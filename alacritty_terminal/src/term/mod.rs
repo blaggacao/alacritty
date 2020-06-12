@@ -21,7 +21,7 @@ use crate::selection::{Selection, SelectionRange};
 use crate::term::cell::{Cell, Flags, LineLength};
 use crate::term::color::Rgb;
 use crate::term::search::{Match, RegexIter, RegexSearch};
-use crate::text_run::{TextRun, TextRunIter};
+use crate::text_run::TextRunIter;
 use crate::vi_mode::{ViModeCursor, ViMotion};
 
 pub mod cell;
@@ -968,13 +968,11 @@ impl<T> Term<T> {
     ///
     /// A text run is a continuous line of cells that all share the same rendering properties
     /// (background color, foreground color, etc.).
-    pub fn text_runs<'b, C>(&'b self, config: &'b Config<C>) -> impl Iterator<Item = TextRun> + 'b {
-        // Logic for WIDE_CHAR is handled internally by TextRun
-        // So we no longer need WIDE_CHAR_SPACER at this point.
-        let filtered_cells = self
-            .renderable_cells(config)
-            .filter(|cell| !cell.flags.contains(Flags::WIDE_CHAR_SPACER));
-        TextRunIter::new(filtered_cells)
+    pub fn text_runs<'b, C>(
+        &'b self,
+        config: &'b Config<C>,
+    ) -> TextRunIter<RenderableCellsIter<'_, C>> {
+        TextRunIter::new(self.renderable_cells(config))
     }
 
     // TODO: For some reason resize clears the last line
